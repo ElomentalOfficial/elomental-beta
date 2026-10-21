@@ -14,6 +14,9 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+  # a change to this workflow deploys at once
+  push:
+    branches: [main]
 
 permissions:
   contents: write
@@ -42,7 +45,7 @@ jobs:
           if [ -z "$sha" ]; then echo "::error::No $BRANCH branch in $SOURCE."; exit 1; fi
           served=$(curl -fsS "https://beta.elomental.online/version.txt?$(date +%s)" 2>/dev/null | tr -d '[:space:]' || true)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          if [ "$sha" != "$served" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ "$sha" != "$served" ] || [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"; echo "beta is at ${sha:0:7}, the site serves ${served:0:7}: building"
           else
             echo "build=false" >> "$GITHUB_OUTPUT"; echo "the site already serves ${sha:0:7}"
