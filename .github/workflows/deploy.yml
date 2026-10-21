@@ -1,0 +1,110 @@
+name: Deploy beta.elomental.online
+
+# The beta site, built here from the beta branch of ElomentalOfficial/elomental (a public
+# repository, so no token is needed) against the BETA Supabase project, and published to this
+# repository's GitHub Pages (beta.elomental.online). Live is untouched: it deploys from main in
+# ElomentalOfficial/elomental (pages.yml there).
+#
+# Every 10 minutes it compares the beta branch with the build the site serves (version.txt) and
+# builds only when beta has moved; "Run workflow" deploys at once. Once a month it makes an empty
+# commit, because GitHub pauses timed workflows in repositories without activity for 60 days.
+# See docs/BETA.md in ElomentalOfficial/elomental.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: beta-pages
+  cancel-in-progress: false
+
+env:
+  SOURCE: ElomentalOfficial/elomental
+  BRANCH: beta
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.look.outputs.sha }}
+      build: ${{ steps.look.outputs.build }}
+    steps:
+      - id: look
+        name: Has beta moved since the site was built?
+        run: |
+          sha=$(git ls-remote "https://github.com/$SOURCE.git" "refs/heads/$BRANCH" | cut -f1)
+          if [ -z "$sha" ]; then echo "::error::No $BRANCH branch in $SOURCE."; exit 1; fi
+          served=$(curl -fsS "https://beta.elomental.online/version.txt?$(date +%s)" 2>/dev/null | tr -d '[:space:]' || true)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$sha" != "$served" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; echo "beta is at ${sha:0:7}, the site serves ${served:0:7}: building"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"; echo "the site already serves ${sha:0:7}"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VITE_ENV: beta
+      # the beta project (public by design, like the live one in client.ts)
+      VITE_SUPABASE_URL: https://skuxlbukdynqsetnyqzw.supabase.co
+      VITE_SUPABASE_KEY: sb_publishable_3lMpeOjhQcGIxaMW4goewQ_f1ks36Bl
+      VITE_TURNSTILE_SITE_KEY: 0x4AAAAAAFbT-did4rZdUb9s
+    steps:
+      - name: Refuse to build against the live project
+        run: |
+          case "$VITE_SUPABASE_URL" in
+            *xekeiwaxxsmvalezgtyj*) echo "::error::VITE_SUPABASE_URL is the live project."; exit 1 ;;
+          esac
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE }}
+          ref: ${{ needs.check.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Mark the build, keep search engines away
+        run: |
+          echo "${{ needs.check.outputs.sha }}" > packages/web/dist/version.txt
+          printf 'User-agent: *\nDisallow: /\n' > packages/web/dist/robots.txt
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  keepalive:
+    # once a month (the first run after midnight UTC on the 1st), so the timer is never paused
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Monthly keep-alive commit
+        run: |
+          if [ "$(date -u +%d%H)" != "0100" ] || [ "$(date -u +%M)" -ge 10 ]; then exit 0; fi
+          git clone -q --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" repo
+          cd repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q --allow-empty -m "Keep the beta deploy timer on"
+          git push -q
