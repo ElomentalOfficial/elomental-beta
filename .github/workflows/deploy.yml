@@ -60,7 +60,8 @@ jobs:
       # the beta project (public by design, like the live one in client.ts)
       VITE_SUPABASE_URL: https://skuxlbukdynqsetnyqzw.supabase.co
       VITE_SUPABASE_KEY: sb_publishable_3lMpeOjhQcGIxaMW4goewQ_f1ks36Bl
-      VITE_TURNSTILE_SITE_KEY: 0x4AAAAAAFbT-did4rZdUb9s
+      # no captcha on beta (only the owner signs in there): no Turnstile widget, no token
+      VITE_TURNSTILE_SITE_KEY: ''
     steps:
       - name: Refuse to build against the live project
         run: |
