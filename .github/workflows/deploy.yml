@@ -62,6 +62,8 @@ jobs:
       VITE_SUPABASE_KEY: sb_publishable_3lMpeOjhQcGIxaMW4goewQ_f1ks36Bl
       # no captcha on beta (only the owner signs in there): no Turnstile widget, no token
       VITE_TURNSTILE_SITE_KEY: ''
+      # the Daily reminder's push key, its public half (the browser needs it to subscribe)
+      VITE_VAPID_PUBLIC_KEY: BFfCaiIVhFmZh9ePDtiTJ7vKAbdC9PepOYFzTDOG51tXM9J5HuMn6V8Lpgnrzn1TO8XIena1IdSa4mBDY_hrSSA
     steps:
       - name: Refuse to build against the live project
         run: |
